@@ -6,11 +6,9 @@
     <title>Transcription Vocale</title>
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
-        /* Add padding to the bottom to avoid OS navigation bars on mobile */
         body {
             padding-bottom: env(safe-area-inset-bottom);
         }
-        /* Smooth transitions */
         body, #transcription-output {
             transition: background-color 0.3s ease-in-out, color 0.3s ease-in-out;
         }
@@ -28,19 +26,17 @@
 
     <main id="main-content" class="flex-grow p-6 overflow-y-auto flex flex-col justify-end">
         <p id="transcription-output" class="text-lg whitespace-pre-wrap">
-            <span class="text-gray-500">En attente de la parole... Veuillez autoriser l'accès au microphone.</span>
+            <span class="text-gray-500">En attente de la parole...</span>
         </p>
     </main>
 
     <nav class="bg-gray-200 dark:bg-gray-900 p-3 shadow-lg flex-shrink-0">
         <div class="flex justify-around items-center">
             <button id="btn-text-minus" class="text-xl font-bold bg-gray-300 dark:bg-gray-700 rounded-full w-12 h-12 flex items-center justify-center hover:bg-gray-400 dark:hover:bg-gray-600 active:scale-95 transition-transform">-</button>
-            
             <button id="btn-theme-toggle" class="text-lg font-semibold bg-gray-300 dark:bg-gray-700 rounded-lg px-4 h-12 flex items-center justify-center hover:bg-gray-400 dark:hover:bg-gray-600 active:scale-95 transition-transform">
                 <svg id="theme-icon-light" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6 hidden" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z" /></svg>
                 <svg id="theme-icon-dark" xmlns="http://www.w3.org/2000/svg" class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2"><path stroke-linecap="round" stroke-linejoin="round" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z" /></svg>
             </button>
-
             <button id="btn-text-plus" class="text-xl font-bold bg-gray-300 dark:bg-gray-700 rounded-full w-12 h-12 flex items-center justify-center hover:bg-gray-400 dark:hover:bg-gray-600 active:scale-95 transition-transform">+</button>
         </div>
     </nav>
@@ -63,30 +59,32 @@
             recognition.continuous = true;
             recognition.interimResults = true;
 
-            // **FIXED LOGIC**: Rebuilds the transcript from the results list on every event
-            // This prevents duplication and correctly handles final/interim results.
-            recognition.onresult = (event) => {
-                let final_text = '';
-                let interim_text = '';
+            // **NEW LOGIC START**
+            // This variable will hold all the confirmed text and will NOT be reset.
+            let final_transcript = '';
 
-                for (const result of event.results) {
-                    if (result.isFinal) {
-                        final_text += result[0].transcript + ' ';
+            recognition.onresult = (event) => {
+                let interim_transcript = '';
+
+                // Loop through the results from the last known index.
+                for (let i = event.resultIndex; i < event.results.length; ++i) {
+                    // If the result is final, append it to our master transcript.
+                    if (event.results[i].isFinal) {
+                        final_transcript += event.results[i][0].transcript + ' ';
                     } else {
-                        interim_text += result[0].transcript;
+                        // Otherwise, it's an interim result.
+                        interim_transcript += event.results[i][0].transcript;
                     }
                 }
 
-                output.innerHTML = final_text + `<span class="text-gray-500">${interim_text}</span>`;
+                // Update the display with the master transcript plus the current interim part.
+                output.innerHTML = final_transcript + `<span class="text-gray-500">${interim_transcript}</span>`;
                 mainContent.scrollTop = mainContent.scrollHeight; // Auto-scroll
             };
+            // **NEW LOGIC END**
             
             recognition.onerror = (event) => {
-                let errorMessage = "Une erreur est survenue: " + event.error;
-                if (event.error === 'not-allowed' || event.error === 'service-not-allowed') {
-                    errorMessage = "Accès au microphone refusé. Veuillez autoriser l'accès dans les paramètres.";
-                }
-                output.innerHTML = `<span class="text-red-500">${errorMessage}</span>`;
+                console.error("Speech recognition error", event.error);
             };
 
             recognition.onend = () => {
@@ -95,26 +93,15 @@
 
             recognition.start();
 
-            // --- UI Controls (No changes needed here) ---
-            const updateFontSize = () => {
-                output.style.fontSize = `${currentFontSize}px`;
-            };
-            document.getElementById('btn-text-plus').addEventListener('click', () => {
-                currentFontSize += 2;
-                updateFontSize();
-            });
-            document.getElementById('btn-text-minus').addEventListener('click', () => {
-                if (currentFontSize > 10) {
-                    currentFontSize -= 2;
-                    updateFontSize();
-                }
-            });
-
+            // --- UI Controls ---
+            const updateFontSize = () => { output.style.fontSize = `${currentFontSize}px`; };
+            document.getElementById('btn-text-plus').addEventListener('click', () => { currentFontSize += 2; updateFontSize(); });
+            document.getElementById('btn-text-minus').addEventListener('click', () => { if (currentFontSize > 10) { currentFontSize -= 2; updateFontSize(); } });
+            
             const themeToggleBtn = document.getElementById('btn-theme-toggle');
             const lightIcon = document.getElementById('theme-icon-light');
             const darkIcon = document.getElementById('theme-icon-dark');
             const htmlEl = document.documentElement;
-
             const updateThemeIcons = () => {
                 if (htmlEl.classList.contains('dark')) {
                     lightIcon.classList.remove('hidden');
@@ -124,20 +111,13 @@
                     darkIcon.classList.remove('hidden');
                 }
             };
-            
-            if (localStorage.getItem('theme') === 'light') {
-                htmlEl.classList.remove('dark');
-            } else {
-                htmlEl.classList.add('dark');
-            }
+            if (localStorage.getItem('theme') === 'light') { htmlEl.classList.remove('dark'); } else { htmlEl.classList.add('dark'); }
             updateThemeIcons();
-
             themeToggleBtn.addEventListener('click', () => {
                 htmlEl.classList.toggle('dark');
                 localStorage.setItem('theme', htmlEl.classList.contains('dark') ? 'dark' : 'light');
                 updateThemeIcons();
             });
-            
             updateFontSize();
         });
     </script>
